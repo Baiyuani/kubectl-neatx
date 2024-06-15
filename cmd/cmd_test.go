@@ -17,7 +17,7 @@ package cmd
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -28,13 +28,13 @@ func assertErrorNil(err error) bool {
 }
 func TestRootCmd(t *testing.T) {
 	resourceDataJSONPath := "../test/fixtures/service1-raw.json"
-	resourceDataJSONBytes, err := ioutil.ReadFile(resourceDataJSONPath)
+	resourceDataJSONBytes, err := os.ReadFile(resourceDataJSONPath)
 	resourceDataJSON := string(resourceDataJSONBytes)
 	if err != nil {
 		t.Errorf("error readin test data file %s: %v", resourceDataJSONPath, err)
 	}
 	resourceDataYAMLPath := "../test/fixtures/service1-raw.yaml"
-	resourceDataYAMLBytes, err := ioutil.ReadFile(resourceDataYAMLPath)
+	resourceDataYAMLBytes, err := os.ReadFile(resourceDataYAMLPath)
 	resourceDataYAML := string(resourceDataYAMLBytes)
 	if err != nil {
 		t.Errorf("error readin test data file %s: %v", resourceDataYAMLPath, err)
@@ -104,11 +104,11 @@ func TestRootCmd(t *testing.T) {
 		rootCmd.SetErr(cmderr)
 		rootCmd.ParseFlags(tc.args)
 		resErr := rootCmd.RunE(rootCmd, tc.args)
-		resStdout, err := ioutil.ReadAll(cmdout)
+		resStdout, err := io.ReadAll(cmdout)
 		if err != nil {
 			t.Errorf("error reading command output: %v", err)
 		}
-		resStderr, err := ioutil.ReadAll(cmderr)
+		resStderr, err := io.ReadAll(cmderr)
 		if err != nil {
 			t.Errorf("error reading command error: %v\ntest case: %v", err, tc)
 		}
@@ -135,7 +135,7 @@ func TestGetCmd(t *testing.T) {
 		{
 			args: []string{""},
 			assertError: func(err error) bool {
-				return strings.HasPrefix(err.Error(), "Error invoking kubectl")
+				return strings.HasPrefix(err.Error(), "error invoking kubectl")
 			},
 			expOut: "",
 			expErr: "",
@@ -174,11 +174,11 @@ func TestGetCmd(t *testing.T) {
 		rootCmd.SetErr(cmderr)
 		rootCmd.ParseFlags(tc.args)
 		resErr := getCmd.RunE(getCmd, tc.args)
-		resStdout, err := ioutil.ReadAll(cmdout)
+		resStdout, err := io.ReadAll(cmdout)
 		if err != nil {
 			t.Errorf("error reading command output: %v", err)
 		}
-		resStderr, err := ioutil.ReadAll(cmderr)
+		resStderr, err := io.ReadAll(cmderr)
 		if err != nil {
 			t.Errorf("error reading command error: %v\ntest case: %v", err, tc)
 		}
