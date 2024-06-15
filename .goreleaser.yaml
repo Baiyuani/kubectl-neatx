@@ -37,9 +37,9 @@ checksum:
 snapshot:
   name_template: "{{ .Tag }}-next"
 
-changelog:
-  filters:
-    exclude:
-    - '^docs:'
-    - '^test:'
+# changelog:
+#   filters:
+#     exclude:
+#     - '^docs:'
+#     - '^test:'
 
