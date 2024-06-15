@@ -17,12 +17,12 @@ package cmd
 
 import (
 	"bytes"
+	"embed"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path"
-	"regexp"
 	s "strings"
 	"unicode"
 
@@ -36,12 +36,15 @@ var namespace *string
 var exportOutDir *string
 var allNamespaces *bool
 
+//go:embed api-resources.txt
+var folder embed.FS
+
 func init() {
 	outputFormat = rootCmd.PersistentFlags().StringP("output", "o", "yaml", "output format: yaml or json")
 	inputFile = rootCmd.Flags().StringP("file", "f", "-", "file path to neat, or - to read from stdin")
-	namespace = exportCmd.Flags().StringP("namespace", "n", "-", "namespace")
+	namespace = exportCmd.Flags().StringP("namespace", "n", "default", "namespace")
 	// kindListFromFile = exportCmd.Flags().StringP("list-file", "l", "-", "file path to kind list from file")
-	exportOutDir = exportCmd.Flags().StringP("dest-dir", "d", "-", "export file to directory")
+	exportOutDir = exportCmd.Flags().StringP("dest-dir", "d", "manifests", "export file to directory")
 	allNamespaces = exportCmd.Flags().BoolP("all-namespaces", "A", false, "export all namespaces")
 	rootCmd.SetOut(os.Stdout)
 	rootCmd.SetErr(os.Stderr)
@@ -59,12 +62,12 @@ func Execute() {
 }
 
 var rootCmd = &cobra.Command{
-	Use: "kubectl-neat",
-	Example: `kubectl get pod mypod -o yaml | kubectl neat
-kubectl get pod mypod -oyaml | kubectl neat -o json
-kubectl neat -f - <./my-pod.json
-kubectl neat -f ./my-pod.json
-kubectl neat -f ./my-pod.json --output yaml`,
+	Use: "kubectl-neatx",
+	Example: `kubectl get pod mypod -o yaml | kubectl neatx
+kubectl get pod mypod -oyaml | kubectl neatx -o json
+kubectl neatx -f - <./my-pod.json
+kubectl neatx -f ./my-pod.json
+kubectl neatx -f ./my-pod.json --output yaml`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var in, out []byte
 		var err error
@@ -98,8 +101,8 @@ var kubectl string = "kubectl"
 var getCmd = &cobra.Command{
 	Use:   "get",
 	Short: "Print specific resource manifest",
-	Example: `kubectl neat get -- pod mypod -oyaml
-kubectl neat get -- svc -n default myservice --output json`,
+	Example: `kubectl neatx get -- pod mypod -oyaml
+kubectl neatx get -- svc -n default myservice --output json`,
 	FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true}, //don't try to validate kubectl get's flags
 	RunE: func(cmd *cobra.Command, args []string) error {
 		out, err := get(cmd, args)
@@ -118,10 +121,10 @@ var (
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print kubectl-neat version",
-	Long:  "Print the version of kubectl-neat",
+	Short: "Print kubectl-neatx version",
+	Long:  "Print the version of kubectl-neatx",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("kubectl-neat version: %s\n", Version)
+		fmt.Printf("kubectl-neatx version: %s\n", Version)
 	},
 }
 
@@ -178,7 +181,7 @@ func get(cmd *cobra.Command, args []string) (string, error) {
 	kubectlCmd := exec.Command(kubectl, cmdArgs...)
 	kres, err := kubectlCmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("Error invoking kubectl as %v %v", kubectlCmd.Args, err)
+		return "", fmt.Errorf("error invoking kubectl as %v %v", cmdArgs, err)
 	}
 	//handle the case of 0--J->J--J
 	outFormat := *outputFormat
@@ -213,27 +216,32 @@ func getAllNamespaces() ([]string, error) {
 	return res, nil
 }
 
+func getapiResource() []string {
+	//获取api-resources
+	var apiResources []string
+
+	content, _ := folder.ReadFile("api-resources.txt")
+
+	apiResourcesCmd := exec.Command(kubectl, "api-resources", "--no-headers")
+	apiResourcesCmdOut, err := apiResourcesCmd.CombinedOutput()
+	if err != nil {
+		fmt.Println("getapiResource: embedding resources")
+		apiResources = s.Split(string(content), "\n")[:len(s.Split(string(content), "\n"))-1]
+		// return fmt.Errorf("error invoking kubectl as %v %v", apiResourcesCmd.Args, err)
+	} else {
+		apiResources = s.Split(string(apiResourcesCmdOut), "\n")[:len(s.Split(string(apiResourcesCmdOut), "\n"))-1]
+	}
+	return apiResources
+}
+
 var exportCmd = &cobra.Command{
 	Use:     "export",
 	Short:   "Batch export of specified resource lists",
-	Example: `kubectl neat export -n default deploy sts ...`,
+	Example: `kubectl neatx export -n default deploy,sts,svc ...`,
 	// FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true}, //don't try to validate kubectl get's flags
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// fmt.Println(args)
-		// fmt.Printf("%s\n", *namespace)
 		var namespacesList []string
 		var err error
-
-		//获取api-resources
-		apiResourcesCmd := exec.Command(kubectl, "api-resources", "--no-headers")
-		apiResourcesCmdOut, err := apiResourcesCmd.CombinedOutput()
-		var apiResources []string
-		if err != nil {
-			apiResources = nil
-			return fmt.Errorf("Error invoking kubectl as %v %v", apiResourcesCmd.Args, err)
-		} else {
-			apiResources = s.Split(string(apiResourcesCmdOut), "\n")[:len(s.Split(string(apiResourcesCmdOut), "\n"))-1]
-		}
 
 		//获取kind清单
 		var kindList []string
@@ -244,11 +252,7 @@ var exportCmd = &cobra.Command{
 		//存储目录初始化
 		var outDir string
 		var clustrdDir = "Clusterd"
-		if *exportOutDir == "-" {
-			outDir = "manifests"
-		} else {
-			outDir = *exportOutDir
-		}
+		outDir = *exportOutDir
 		err = os.Mkdir(outDir, 0755)
 		if err != nil {
 			return err
@@ -269,6 +273,7 @@ var exportCmd = &cobra.Command{
 		}
 
 		//执行
+		apiResources := getapiResource()
 		for _, kind := range kindList {
 			var kindDir string
 			//判断是否为clusterd的kind
@@ -279,7 +284,10 @@ var exportCmd = &cobra.Command{
 				if err != nil {
 					return err
 				}
-				_ = getManifest(cmd, kindDir, kind, "default")
+				err = getManifest(cmd, kindDir, kind, "default")
+				if err != nil {
+					return err
+				}
 				kindList = DeleteSlice3(kindList, kind)
 			}
 		}
@@ -298,7 +306,10 @@ var exportCmd = &cobra.Command{
 					return err
 				}
 
-				_ = getManifest(cmd, kindDir, kind, ns)
+				err = getManifest(cmd, kindDir, kind, ns)
+				if err != nil {
+					return err
+				}
 
 			}
 		}
@@ -314,7 +325,6 @@ func isClusetrdKind(name string, cache []string) (bool, error) {
 	for _, api := range cache {
 		apiSlice := s.Split(deleteExtraSpace(api), " ")
 		if apiSlice[1] == name {
-			fmt.Printf("DEBUG: %s, %s\n", name, apiSlice[3])
 			if apiSlice[3] == "true" {
 				return false, nil
 			} else {
@@ -326,7 +336,6 @@ func isClusetrdKind(name string, cache []string) (bool, error) {
 	for _, api := range cache {
 		apiSlice := s.Split(deleteExtraSpace(api), " ")
 		if s.Contains(apiSlice[0], name) {
-			fmt.Printf("DEBUG: %s, %s\n", name, apiSlice[3])
 			if apiSlice[3] == "true" {
 				return false, nil
 			} else {
@@ -338,62 +347,24 @@ func isClusetrdKind(name string, cache []string) (bool, error) {
 	return false, nil
 }
 
-// 删除字符串中多余的空格，有多个空格时，仅保留一个空格
-func deleteExtraSpace(data string) string {
-	// 替换 tab 为空格
-	s1 := s.Replace(data, "\t", " ", -1)
-
-	// 正则表达式匹配两个及两个以上空格
-	regstr := "\\s{2,}"
-	reg, _ := regexp.Compile(regstr)
-
-	// 将字符串复制到切片
-	s2 := make([]byte, len(s1))
-	copy(s2, s1)
-
-	// 删除多余空格
-	spcIndex := reg.FindStringIndex(string(s2))
-	for len(spcIndex) > 0 {
-		s2 = append(s2[:spcIndex[0]+1], s2[spcIndex[1]:]...)
-		spcIndex = reg.FindStringIndex(string(s2))
-	}
-
-	return string(s2)
-}
-
 func getManifest(cmd *cobra.Command, kindDir string, kind string, ns string) error {
 
 	//获取资源名字列表
 	kubectlCmd := exec.Command(kubectl, "get", kind, "-n", ns, "-o", "name")
 	kcmdRes, err := kubectlCmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("Error invoking kubectl as %v %v", kubectlCmd.Args, err)
+		return fmt.Errorf("error invoking kubectl as %v %v", kubectlCmd.Args, err)
 	}
-
-	// fmt.Printf("%s\n", kcmdRes)
 
 	resoucesSLice := s.Split(string(kcmdRes), "\n")
 	for _, name := range resoucesSLice[:len(resoucesSLice)-1] {
-		// fmt.Printf("debug: %s\n", string(name))
 		out, err := get(cmd, []string{name, "-n", ns})
 		if err != nil {
 			return err
 		}
 
-		// fmt.Printf("%s\n", out)
 		resourceFile := fmt.Sprintf("%s/%s.yaml", kindDir, s.Split(name, "/")[1])
 		os.WriteFile(resourceFile, []byte(out), 0644)
 	}
 	return nil
-}
-
-func DeleteSlice3(a []string, elem string) []string {
-	j := 0
-	for _, v := range a {
-		if v != elem {
-			a[j] = v
-			j++
-		}
-	}
-	return a[:j]
 }

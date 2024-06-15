@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Baiyuani/kubectl-neat/pkg/testutil"
+	"github.com/Baiyuani/kubectl-neatx/pkg/testutil"
 )
 
 func TestNeatMetadata(t *testing.T) {

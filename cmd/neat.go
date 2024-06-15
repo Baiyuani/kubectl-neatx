@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Baiyuani/kubectl-neat/pkg/defaults"
+	"github.com/Baiyuani/kubectl-neatx/pkg/defaults"
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
