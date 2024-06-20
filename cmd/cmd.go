@@ -210,7 +210,7 @@ func getapiResource() []string {
 	apiResourcesCmd := exec.Command(kubectl, "api-resources", "--no-headers")
 	apiResourcesCmdOut, err := apiResourcesCmd.CombinedOutput()
 	if err != nil {
-		fmt.Println("getapiResource: embedding resources")
+		fmt.Printf("error invoking kubectl as %v %v, getting embedding api-resources..", apiResourcesCmd.Args, err)
 		apiResources = s.Split(string(content), "\n")[:len(s.Split(string(content), "\n"))-1]
 		// return fmt.Errorf("error invoking kubectl as %v %v", apiResourcesCmd.Args, err)
 	} else {
@@ -259,10 +259,11 @@ var exportCmd = &cobra.Command{
 
 		//执行
 		apiResources := getapiResource()
+		var namespacedKindList []string
 		for _, kind := range kindList {
 			var kindDir string
 			//判断是否为clusterd的kind
-			condition, _ := isClusetrdKind(kind, apiResources)
+			condition := isClusetrdKind(kind, apiResources)
 			if condition {
 				kindDir = path.Join(outDir, clustrdDir, kind)
 				err := os.Mkdir(kindDir, 0755)
@@ -273,7 +274,8 @@ var exportCmd = &cobra.Command{
 				if err != nil {
 					return err
 				}
-				kindList = DeleteSlice3(kindList, kind)
+			} else {
+				namespacedKindList = append(namespacedKindList, kind)
 			}
 		}
 
@@ -284,7 +286,7 @@ var exportCmd = &cobra.Command{
 				return err
 			}
 
-			for _, kind := range kindList {
+			for _, kind := range namespacedKindList {
 				kindDir := path.Join(nsDir, kind)
 				err := os.Mkdir(kindDir, 0755)
 				if err != nil {
@@ -302,34 +304,59 @@ var exportCmd = &cobra.Command{
 	},
 }
 
-func isClusetrdKind(name string, cache []string) (bool, error) {
+func isClusetrdKind(name string, cache []string) bool {
 	if cache == nil {
-		return false, nil
+		return false
 	}
 
 	for _, api := range cache {
-		apiSlice := s.Split(deleteExtraSpace(api), " ")
-		if apiSlice[1] == name {
-			if apiSlice[3] == "true" {
-				return false, nil
-			} else {
-				return true, nil
+		api = deleteExtraSpace(api)
+		apiSlice := s.Split(api, " ")
+		len := len(apiSlice)
+		if len == 4 {
+			if s.ToLower(apiSlice[3]) == name {
+				if apiSlice[2] == "true" {
+					return false
+				} else {
+					return true
+				}
+			}
+			if apiSlice[0] == name {
+				if apiSlice[2] == "true" {
+					return false
+				} else {
+					return true
+				}
 			}
 		}
-	}
 
-	for _, api := range cache {
-		apiSlice := s.Split(deleteExtraSpace(api), " ")
-		if s.Contains(apiSlice[0], name) {
-			if apiSlice[3] == "true" {
-				return false, nil
-			} else {
-				return true, nil
+		if len == 5 {
+			if apiSlice[1] == name {
+				if apiSlice[3] == "true" {
+					return false
+				} else {
+					return true
+				}
+			}
+			if s.ToLower(apiSlice[4]) == name {
+				if apiSlice[3] == "true" {
+					return false
+				} else {
+					return true
+				}
+			}
+			if apiSlice[0] == name {
+				if apiSlice[3] == "true" {
+					return false
+				} else {
+					return true
+				}
 			}
 		}
+
 	}
 
-	return false, nil
+	return false
 }
 
 func getManifest(cmd *cobra.Command, kindDir string, kind string, ns string) error {
