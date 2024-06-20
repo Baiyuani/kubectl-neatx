@@ -2,7 +2,7 @@
 
 > based on https://github.com/itaysk/kubectl-neat, add subcommand 'export' and 'migrate'(todo)
 
-Remove clutter from Kubernetes manifests to make them more readable.
+If you just want yaml readability, please use [kubectl-neat](https://github.com/itaysk/kubectl-neat). If you want to back up yaml or create it in another cluster, you can use kubectl-neatx.
 
 
 ## Why
