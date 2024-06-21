@@ -166,7 +166,8 @@ func get(cmd *cobra.Command, args []string) (string, error) {
 	kubectlCmd := exec.Command(kubectl, cmdArgs...)
 	kres, err := kubectlCmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("error invoking kubectl as %v %v", cmdArgs, err)
+		// return "", fmt.Errorf("error invoking kubectl as %v %v", cmdArgs, err)
+		return "", err
 	}
 	//handle the case of 0--J->J--J
 	outFormat := *outputFormat
@@ -270,10 +271,8 @@ var exportCmd = &cobra.Command{
 				if err != nil {
 					return err
 				}
-				err = getManifest(cmd, kindDir, kind, "default")
-				if err != nil {
-					return err
-				}
+				getManifest(cmd, kindDir, kind, "default")
+
 			} else {
 				namespacedKindList = append(namespacedKindList, kind)
 			}
@@ -293,10 +292,7 @@ var exportCmd = &cobra.Command{
 					return err
 				}
 
-				err = getManifest(cmd, kindDir, kind, ns)
-				if err != nil {
-					return err
-				}
+				getManifest(cmd, kindDir, kind, ns)
 
 			}
 		}
@@ -359,24 +355,26 @@ func isClusetrdKind(name string, cache []string) bool {
 	return false
 }
 
-func getManifest(cmd *cobra.Command, kindDir string, kind string, ns string) error {
+func getManifest(cmd *cobra.Command, kindDir string, kind string, ns string) {
 
 	//获取资源名字列表
 	kubectlCmd := exec.Command(kubectl, "get", kind, "-n", ns, "-o", "name")
 	kcmdRes, err := kubectlCmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("error invoking kubectl as %v %v", kubectlCmd.Args, err)
-	}
+		// return fmt.Errorf("error invoking kubectl as %v %v", kubectlCmd.Args, err)
+		fmt.Printf("%s", string(kcmdRes))
+		os.Remove(kindDir)
+	} else {
+		resoucesSLice := s.Split(string(kcmdRes), "\n")
+		for _, name := range resoucesSLice[:len(resoucesSLice)-1] {
+			out, err := get(cmd, []string{name, "-n", ns})
+			if err != nil {
+				fmt.Printf("%v", err)
+			} else {
+				resourceFile := fmt.Sprintf("%s/%s.yaml", kindDir, s.Split(name, "/")[1])
+				os.WriteFile(resourceFile, []byte(out), 0644)
+			}
 
-	resoucesSLice := s.Split(string(kcmdRes), "\n")
-	for _, name := range resoucesSLice[:len(resoucesSLice)-1] {
-		out, err := get(cmd, []string{name, "-n", ns})
-		if err != nil {
-			return err
 		}
-
-		resourceFile := fmt.Sprintf("%s/%s.yaml", kindDir, s.Split(name, "/")[1])
-		os.WriteFile(resourceFile, []byte(out), 0644)
 	}
-	return nil
 }
