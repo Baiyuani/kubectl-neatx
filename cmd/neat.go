@@ -12,6 +12,7 @@ import (
 func Neat(in string) (string, error) {
 	var err error
 	draft := in
+	kind := gjson.Get(in, "kind").String()
 
 	if in == "" {
 		return draft, fmt.Errorf("error in neatPod, input json is empty")
@@ -19,8 +20,6 @@ func Neat(in string) (string, error) {
 	if !gjson.Valid(in) {
 		return draft, fmt.Errorf("error in neatPod, input is not a vaild json: %s", in[:20])
 	}
-
-	kind := gjson.Get(in, "kind").String()
 
 	// handle list
 	if kind == "List" {
@@ -36,7 +35,7 @@ func Neat(in string) (string, error) {
 			}
 		}
 		// general neating
-		draft, err = neatMetadata(draft)
+		draft, err = neatMetadata(draft, kind)
 		if err != nil {
 			return draft, fmt.Errorf("error in neatMetadata : %v", err)
 		}
@@ -49,7 +48,7 @@ func Neat(in string) (string, error) {
 	// 	return draft, fmt.Errorf("error in neatDefaults : %v", err)
 	// }
 
-	draft, err = neatSpec(draft)
+	draft, err = neatSpec(draft, kind)
 	if err != nil {
 		return draft, fmt.Errorf("error in neatSpec : %v", err)
 	}
@@ -67,7 +66,7 @@ func Neat(in string) (string, error) {
 	}
 
 	// general neating
-	draft, err = neatMetadata(draft)
+	draft, err = neatMetadata(draft, kind)
 	if err != nil {
 		return draft, fmt.Errorf("error in neatMetadata : %v", err)
 	}
@@ -83,12 +82,11 @@ func Neat(in string) (string, error) {
 	return draft, nil
 }
 
-func neatSpec(in string) (string, error) {
+func neatSpec(in string, kind string) (string, error) {
 	var draft string
 	// var err   error
 
 	draft = in
-	kind := gjson.Get(in, "kind").String()
 
 	draft, _ = sjson.Delete(draft, "spec.template.metadata.creationTimestamp")
 	// if err != nil {
@@ -111,10 +109,13 @@ func neatSpec(in string) (string, error) {
 	return draft, nil
 }
 
-func neatMetadata(in string) (string, error) {
+func neatMetadata(in string, kind string) (string, error) {
 	var err error
+
 	in, _ = sjson.Delete(in, `metadata.annotations.kubectl\.kubernetes\.io/last-applied-configuration`)
-	in, _ = sjson.Delete(in, `metadata.annotations.deployment\.kubernetes\.io/revision`)
+	if kind == "Deployment" {
+		in, _ = sjson.Delete(in, `metadata.annotations.deployment\.kubernetes\.io/revision`)
+	}
 	// if err != nil {
 	// 	return in, fmt.Errorf("error deleting last-applied-configuration : %v", err)
 	// }

@@ -64,7 +64,7 @@ func TestNeatMetadata(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		resJSON, err := neatMetadata(c.data)
+		resJSON, err := neatMetadata(c.data, "")
 		if err != nil {
 			t.Errorf("error in neatMetadata for case '%s': %v", c.title, err)
 			continue

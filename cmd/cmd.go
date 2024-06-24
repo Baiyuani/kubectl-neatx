@@ -237,7 +237,7 @@ var exportCmd = &cobra.Command{
 
 		//存储目录初始化
 		var outDir string
-		var clustrdDir = "Clusterd"
+		var clustrdDir = "Cluster"
 		outDir = *exportOutDir
 		err = os.Mkdir(outDir, 0755)
 		if err != nil {
@@ -263,8 +263,8 @@ var exportCmd = &cobra.Command{
 		var namespacedKindList []string
 		for _, kind := range kindList {
 			var kindDir string
-			//判断是否为clusterd的kind
-			condition := isClusetrdKind(kind, apiResources)
+			//判断是否为Cluster的kind
+			condition := isClusterKind(kind, apiResources)
 			if condition {
 				kindDir = path.Join(outDir, clustrdDir, kind)
 				err := os.Mkdir(kindDir, 0755)
@@ -300,7 +300,7 @@ var exportCmd = &cobra.Command{
 	},
 }
 
-func isClusetrdKind(name string, cache []string) bool {
+func isClusterKind(name string, cache []string) bool {
 	if cache == nil {
 		return false
 	}
