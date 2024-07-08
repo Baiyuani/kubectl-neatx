@@ -49,7 +49,6 @@ func Execute() {
 var rootCmd = &cobra.Command{
 	Use: "kubectl-neatx",
 	Example: `kubectl get pod mypod -o yaml | kubectl neatx
-kubectl get pod mypod -oyaml | kubectl neatx -o json
 kubectl neatx -f - <./my-pod.json
 kubectl neatx -f ./my-pod.json
 kubectl neatx -f ./my-pod.json --output yaml`,
@@ -90,7 +89,8 @@ var getCmd = &cobra.Command{
 kubectl neatx get -- svc -n default myservice --output json`,
 	FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true}, //don't try to validate kubectl get's flags
 	RunE: func(cmd *cobra.Command, args []string) error {
-		out, err := get(cmd, args)
+		outputFormat := outFmt(cmd, args)
+		out, err := get(args, outputFormat)
 		if err != nil {
 			return err
 		}
@@ -147,7 +147,7 @@ func NeatYAMLOrJSON(in []byte, outputFormat string) (out []byte, err error) {
 	return
 }
 
-func get(cmd *cobra.Command, args []string) (string, error) {
+func get(args []string, outFormat string) (string, error) {
 	var out []byte
 	var err error
 	//reset defaults
@@ -169,17 +169,7 @@ func get(cmd *cobra.Command, args []string) (string, error) {
 		// return "", fmt.Errorf("error invoking kubectl as %v %v", cmdArgs, err)
 		return "", err
 	}
-	//handle the case of 0--J->J--J
-	outFormat := *outputFormat
-	kubeout := "yaml"
-	for _, arg := range args {
-		if arg == "json" || arg == "ojson" {
-			outFormat = "json"
-		}
-	}
-	if !cmd.Flag("output").Changed && kubeout == "json" {
-		outFormat = "json"
-	}
+
 	out, err = NeatYAMLOrJSON(kres, outFormat)
 	if err != nil {
 		return "", err
@@ -222,7 +212,7 @@ func getapiResource() []string {
 
 var exportCmd = &cobra.Command{
 	Use:     "export",
-	Short:   "Batch export of specified resource lists",
+	Short:   "Batch export of specified resource manifests",
 	Example: `kubectl neatx export -n default deploy,sts,svc ...`,
 	// FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true}, //don't try to validate kubectl get's flags
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -235,18 +225,20 @@ var exportCmd = &cobra.Command{
 			kindList = append(kindList, s.Split(arg, ",")...)
 		}
 
+		outputFormat := outFmt(cmd, args)
+
 		//存储目录初始化
 		var outDir string
 		var clustrdDir = "Cluster"
 		outDir = *exportOutDir
-		err = os.Mkdir(outDir, 0755)
-		if err != nil {
-			return err
-		}
-		err = os.Mkdir(path.Join(outDir, clustrdDir), 0755)
-		if err != nil {
-			return err
-		}
+		// err = os.MkdirAll(outDir, 0755)
+		// if err != nil {
+		// 	return err
+		// }
+		// err = os.MkdirAll(path.Join(outDir, clustrdDir), 0755)
+		// if err != nil {
+		// 	return err
+		// }
 
 		//获取命名空间slice
 		if *allNamespaces {
@@ -267,11 +259,11 @@ var exportCmd = &cobra.Command{
 			condition := isClusterKind(kind, apiResources)
 			if condition {
 				kindDir = path.Join(outDir, clustrdDir, kind)
-				err := os.Mkdir(kindDir, 0755)
+				err := os.MkdirAll(kindDir, 0755)
 				if err != nil {
 					return err
 				}
-				getManifest(cmd, kindDir, kind, "default")
+				getManifest(kindDir, kind, "default", outputFormat)
 
 			} else {
 				namespacedKindList = append(namespacedKindList, kind)
@@ -280,19 +272,19 @@ var exportCmd = &cobra.Command{
 
 		for _, ns := range namespacesList {
 			nsDir := fmt.Sprintf("%s/%s", outDir, ns)
-			err := os.Mkdir(nsDir, 0755)
+			err := os.MkdirAll(nsDir, 0755)
 			if err != nil {
 				return err
 			}
 
 			for _, kind := range namespacedKindList {
 				kindDir := path.Join(nsDir, kind)
-				err := os.Mkdir(kindDir, 0755)
+				err := os.MkdirAll(kindDir, 0755)
 				if err != nil {
 					return err
 				}
 
-				getManifest(cmd, kindDir, kind, ns)
+				getManifest(kindDir, kind, ns, outputFormat)
 
 			}
 		}
@@ -355,8 +347,7 @@ func isClusterKind(name string, cache []string) bool {
 	return false
 }
 
-func getManifest(cmd *cobra.Command, kindDir string, kind string, ns string) {
-
+func getManifest(kindDir string, kind string, ns string, outFmt string) {
 	//获取资源名字列表
 	kubectlCmd := exec.Command(kubectl, "get", kind, "-n", ns, "-o", "name")
 	kcmdRes, err := kubectlCmd.CombinedOutput()
@@ -367,14 +358,30 @@ func getManifest(cmd *cobra.Command, kindDir string, kind string, ns string) {
 	} else {
 		resoucesSLice := s.Split(string(kcmdRes), "\n")
 		for _, name := range resoucesSLice[:len(resoucesSLice)-1] {
-			out, err := get(cmd, []string{name, "-n", ns})
+			out, err := get([]string{name, "-n", ns}, outFmt)
 			if err != nil {
 				fmt.Printf("%v", err)
 			} else {
-				resourceFile := fmt.Sprintf("%s/%s.yaml", kindDir, s.Split(name, "/")[1])
+				resourceFile := fmt.Sprintf("%s/%s.%s", kindDir, s.Split(name, "/")[1], outFmt)
+				fmt.Println(resourceFile)
 				os.WriteFile(resourceFile, []byte(out), 0644)
 			}
 
 		}
 	}
+}
+
+func outFmt(cmd *cobra.Command, args []string) string {
+	//handle the case of 0--J->J--J
+	outFormat := *outputFormat
+	kubeout := "yaml"
+	for _, arg := range args {
+		if arg == "json" || arg == "ojson" {
+			outFormat = "json"
+		}
+	}
+	if !cmd.Flag("output").Changed && kubeout == "json" {
+		outFormat = "json"
+	}
+	return outFormat
 }

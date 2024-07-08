@@ -101,9 +101,13 @@ func neatSpec(in string, kind string) (string, error) {
 	}
 	if kind == "PersistentVolume" {
 		draft, _ = sjson.Delete(draft, "spec.claimRef")
-		// if err!= nil {
-		//     return draft, fmt.Errorf("error deleting spec.claimRef : %v", err)
-		// }
+	}
+	if kind == "PersistentVolumeClaim" {
+		draft, _ = sjson.Delete(draft, `metadata.annotations.pv\.kubernetes\.io/bound-by-controller`)
+		draft, _ = sjson.Delete(draft, `metadata.annotations.pv\.kubernetes\.io/bind-completed`)
+	}
+	if kind == "Deployment" {
+		draft, _ = sjson.Delete(draft, `spec.template.metadata.annotations.kubectl\.kubernetes\.io/restartedAt`)
 	}
 
 	return draft, nil
