@@ -31,12 +31,17 @@ func init() {
 	// kindListFromFile = exportCmd.Flags().StringP("list-file", "l", "-", "file path to kind list from file")
 	exportOutDir = exportCmd.Flags().StringP("dest-dir", "d", "manifests", "export file to directory")
 	allNamespaces = exportCmd.Flags().BoolP("all-namespaces", "A", false, "export all namespaces")
+	migrateCmd.Flags().String("source-context", "", "source cluster context name")
+	migrateCmd.Flags().String("target-context", "", "target cluster context name")
+	migrateCmd.MarkFlagRequired("source-context")
+	migrateCmd.MarkFlagRequired("target-context")
 	rootCmd.SetOut(os.Stdout)
 	rootCmd.SetErr(os.Stderr)
 	rootCmd.MarkFlagFilename("file")
 	rootCmd.AddCommand(getCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(exportCmd)
+	rootCmd.AddCommand(migrateCmd)
 }
 
 // Execute is the entry point for the command package
@@ -208,6 +213,41 @@ func getapiResource() []string {
 		apiResources = s.Split(string(apiResourcesCmdOut), "\n")[:len(s.Split(string(apiResourcesCmdOut), "\n"))-1]
 	}
 	return apiResources
+}
+
+var migrateCmd = &cobra.Command{
+	Use:   "migrate",
+	Short: "Migrate resources between clusters",
+	Example: `kubectl neatx migrate --source-context=ctx1 --target-context=ctx2 deploy/myapp -n default
+kubectl neatx migrate --source-context=ctx1 --target-context=ctx2 --all -n default`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		sourceContext := cmd.Flag("source-context").Value.String()
+		targetContext := cmd.Flag("target-context").Value.String()
+
+		// Get resources from source cluster
+		kubectlCmd := exec.Command(kubectl, "--context", sourceContext, "get", "-o", "json", args[0])
+		kres, err := kubectlCmd.CombinedOutput()
+		if err != nil {
+			return err
+		}
+
+		// Neat the resource
+		out, err := NeatYAMLOrJSON(kres, "json")
+		if err != nil {
+			return err
+		}
+
+		// Apply to target cluster
+		applyCmd := exec.Command(kubectl, "--context", targetContext, "apply", "-f", "-")
+		applyCmd.Stdin = bytes.NewReader(out)
+		applyOut, err := applyCmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("%s: %v", string(applyOut), err)
+		}
+
+		cmd.Println(string(applyOut))
+		return nil
+	},
 }
 
 var exportCmd = &cobra.Command{
